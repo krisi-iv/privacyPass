@@ -1,0 +1,632 @@
+/*
+* Actors:
+* Usr - User/ Client
+* Srv - Server
+* Ti - Token Issuer
+* 
+* Protocol:
+* 1.  Usr -> Srv: Request for website content (URL)
+* 2.  Srv -> Usr: Present challenge (CHL, {list of commitments=list of Y vals})
+* 3.  Usr -> Srv: Send solution to the challenge (SOL(CHL), blindedTokens)
+* 4.  Srv -> Ti : Send the solution and blinded token to the token issuer (SOL(CHL), blindedTokens)
+* 5.  Ti  -> Srv: Verify the solution. Send the signed blinded token, and the proof pi_sk (<c,s>)
+* 6.  Srv -> Usr: Send the signed blinded token, the proof pi_sk (<c,s>), and the requested resource
+* 7.  Usr -> Srv: Verify the proof pi_sk and store the signed blinded tokens
+* 8.  Usr -> Srv: Send the next content requests
+* 9.  Srv -> Usr: Send the challenge and the list of commitments
+* 10. Usr -> Srv: Send the stored token to the server and HMAC
+* 11. Srv -> Ti : Forward the stored token to the token issuer
+* 12.  Ti -> Srv: Verify the stored token and send the resource
+* 13. Srv -> Usr: Send the resource to the user
+* 14. Usr -> Srv: Receive the resource
+*
+* Using Tamarin 1.10.0, the protocol was verified by running the following command: tamarin-prover privacy_pass_3_tokens.spthy --prove
+* Results:
+* ==============================================================================
+* summary of summaries:
+* analyzed: privacyPass.spthy
+* processing time: 81.88s
+* single_signing_key (all-traces): verified (7 steps)
+* prove_correctness (exists-trace): verified (59 steps)
+* ==============================================================================
+*
+* the "paper" in the comments in this file refer to the "Privacy Pass: Bypassing Internet Challenges Anonymously" paper
+*/
+
+theory PP_model
+begin
+
+functions: h1/1, h2/2, h3/6, blind/2, sign/2, unblind/2, 
+        Store/4, CheckTokenSpent/2, CalcR/3, verifySolution/1, TokenSpent/3,                    // functions as defined in the paper 
+        true/0, false/0,                                                                        // constants       
+        pow/2, mod/2, multiply/2, minus/2, inverse/1,                                           // mathematical functions used in the protocol 
+        calcA/1, calcB/1,                                                                       // functions to recalculate A and B in the DLEQ proof
+        HMAC/2,
+		//Partial deconstructions
+        URL/1, Challenge/1, BlindedToken/1, UserSolution/1, SignedToken/1, SrvSignedToken/1, 
+		CHash/1, SMod/1, WebResources/1,
+		Token/1, SHMac/1
+equations [convergent]:
+    verifySolution(sol) = true,                                                                 // function that the Ti uses to verify the solution to the challenge
+    CheckTokenSpent($Srv, t) = false,                                                           // function that the Ti uses to check if the token is stored in its data strore (refer to the paper)
+	unblind(sign(blind(h1(x),r),secr_key),r) = sign(h1(x),secr_key),                            // unblind the blinded signed token
+    // Recalculate A in the DLEQ proof: A = X^s * Y^c = X^((t-(h3(X, Y, P, Q, Xt, Pt)*k)) mod q) * X^k^h3(X, Y, P, Q, Xt, Pt) = Xt, where t is a random nonce
+    calcA(
+        multiply(
+            pow(X, mod(minus(t, multiply(h3(X, Y, P, Q, Xt, Pt), k)), q)),
+            pow(pow(X, k), h3(X, Y, P, Q, Xt, Pt))
+        )
+        ) = Xt,
+    // Recalculate AB in the DLEQ proof: B = P^s * P^c = P^((t-(h3(X, Y, P, Q, Xt, Pt)*k)) mod q) * P^k^h3(X, Y, P, Q, Xt, Pt) = Pt, where t is a random nonce
+    calcB(
+        multiply(
+            pow(P, mod(minus(t, multiply(h3(X, Y, P, Q, Xt, Pt), k)), q)),
+            pow(pow(P, k), h3(X, Y, P, Q, Xt, Pt))
+        )
+    ) = Pt
+    
+// used to check the solution is indeed correct, the equality in the DLEQ proof holds, the token is stored in the ticket issuer's data store, and the HMACs are equal
+restriction equality: "All #i x y. Eq(x , y) @ i ==> x = y"
+// the following 2 restrictions are used to allow only a single instance of the server and ticket issuer to be created in the protocol for this implementation
+restriction single_ti: "All #i #j ti Y sk1 ti2 Y2 sk2. Setup_Ti(ti, Y, sk1) @ i & Setup_Ti(ti2, Y2, sk2) @ j ==> #i = #j"
+restriction single_server: "All #i #j server ti Y server2 ti2 Y2. Setup_Srv(server, ti, Y) @ i & Setup_Srv(server2, ti2, Y2) @ j ==> #i = #j"
+// used to ensure that the server is not a ticket issuer or user, and the ticket issuer is not a user (i.e. each entity has a unique role)
+restriction unique_entities: "All #i #j x role1 role2. EntityCreated(x, role1) @ i & EntityCreated(x, role2) @ j ==> #i = #j"
+restriction OnlyOnce: " All p q r #i #j. OnlyOnce(p, q, r)@i & OnlyOnce(p, q, r)@j ==> #i = #j "
+// the following two rules are used to model the secure channel used in the protocol
+rule ChanOut_S:
+    [ Out_S(~chId, $A,$B,x) ]
+    --[ ChanOut_S($A,$B,x) ]->
+    [ Sec(~chId, $A,$B,x) ]
+
+rule ChanIn_S:
+    [ Sec(~chId, $A,$B,x) ]
+    --[
+		ChanIn_S($A,$B,x),
+		Ti_verify_sent(~chId, $A, $B, x)
+	]->
+    [ In_S(~chId, $A,$B,x) ]
+
+// compromised secure channel where the attacker can inject messages into the channel
+rule ChanOut_Comp:
+    [ In(<~chId,$A,$B,x>) ]
+    --[ 
+        Rev($A, 'secureChannel'),
+        Rev($B, 'secureChannel'),
+        Injected(x)
+    ]->
+    [ Sec(~chId,$A,$B,x) ]
+
+rule ChanIn_Comp:
+    [ Sec(~chId,$A,$B,x) ]
+    --[ 
+        Rev($A, 'secureChannel'),
+        Rev($B, 'secureChannel')
+    ]->
+    [ Out(<~chId,x>) ]
+
+// setting up the ticket issuer with its secret key, the order of the group, the generators of the group, and the commitments
+rule Setup_Ti:
+    let Y = pow(X, secr_key)                                                                    // Y = X^sk
+        Q = pow(P, secr_key)                                                                    // Q = P^sk
+    in
+    [ 
+        Fr(X), 
+        Fr(P), 
+        Fr(ord),                                                                                // the order of the group
+        Fr(secr_key)                                                                            // the secret signing key of the ticket issuer
+    ]
+    --[ 
+        Setup_Ti($Ti, Y, secr_key), 
+        EntityCreated($Ti, 'ti'), 
+        Unique(<$Ti, X, Y, P, Q, ord, secr_key>) 
+    ]->
+    [ 
+        LeakKeys($Ti, secr_key),
+        State_Ti_setup($Ti, X, Y, P, Q, ord, secr_key), 
+        State_Srv_Ti($Ti, Y), 
+        !State_Usr_Ti($Ti, X, P, Q), 
+        State_Ti_id($Ti)
+    ]
+
+// setting up the server with the commitment of the ticket issuer and knowledge of the ticket issuer
+rule Setup_Srv:
+    [ 
+        State_Srv_Ti($Ti, Y),
+        Fr(~Srv_id)
+    ]
+    --[ 
+        Setup_Srv($Srv, $Ti, Y), 
+        EntityCreated($Srv, 'server') 
+    ]->
+    [  
+        State_Srv_setup($Srv, $Ti, Y), 
+        !State_Srv_Usr($Srv, $Ti, Y),
+        !State_Srv_id($Srv) 
+    ]
+
+// setting up the user with the commitment of the server and knowledge of the server
+rule Setup_Usr:
+    [ 
+        !State_Usr_Ti($Ti, X, P, Q), 
+        !State_Srv_Usr($Srv, $Ti, Y),
+        Fr(~Usr_id)
+    ]
+    --[ 
+        Setup_Usr($Usr, $Srv, Y), 
+        EntityCreated($Usr, 'user') ]->
+    [ 
+        State_Usr_setup($Usr, $Srv, X, P, Q),
+        State_Usr_id($Usr)
+    ]
+
+// allowing the TI to leak its secret key   
+rule Ti_leaked_signing_key:
+    [ LeakKeys($Ti, secr_key) ]
+    --[ TiLeakedKey($Ti, secr_key) ]->
+    [ Out(secr_key) ]
+
+// create channel id between the TI and the server
+rule connect_Ti_Srv:
+    [
+        State_Ti_id($Ti),
+        !State_Srv_id($Srv),
+        Fr(~chId_srv_ti)
+    ]
+    --[ 
+        OnlyOnce(~chId_srv_ti,$Ti, $Srv),
+        Unique(<~chId_srv_ti, $Ti, $Srv>)
+     ]->
+    [
+        Srv_Ti_chan(~chId_srv_ti, $Ti, $Srv),
+        Ti_chan(~chId_srv_ti, $Ti, $Srv)
+    ]
+
+// create channel id between a user and the server
+rule connect_Usr_Srv:
+    [
+        State_Usr_id($Usr),
+        !State_Srv_id($Srv),
+        Fr(~chId_srv_usr)
+    ]
+    --[ 
+        OnlyOnce(~chId_srv_usr, $Usr, $Srv),
+        Unique(<~chId_srv_usr, $Usr, $Srv>)
+     ]->
+    [
+        Srv_Usr_chan(~chId_srv_usr, $Usr, $Srv),
+        Usr_chan(~chId_srv_usr, $Usr, $Srv)
+    ]
+
+/* 
+* 1. Usr -> Srv: Request for website content (URL)
+* Send a GET request for the website content (URL(~url)) to the server
+*/
+rule U_request_content:
+    let get_content_request = <'1', $Usr, URL(~url)> 
+    in
+    [ 
+        Fr(~url),
+        Usr_chan(~chId_srv_usr, $Usr, $Srv)
+    ]                                                                                           // the user generates a fresh URL request
+    --[ 
+        RequestContent($Usr, $Srv, ~url), 
+        Unique(<$Usr, $Srv, ~url>)
+    ]->
+    [ 
+        Out_S(~chId_srv_usr, $Usr, $Srv, get_content_request),                                  // send the request to the server
+        State_Usr_request_content(~chId_srv_usr, $Usr, $Srv, ~url) 
+    ] 
+
+/*
+* 2. Srv -> Usr: Present a challenge to the user (CHL, {list of commitments for the TI's signing keys = list of Y vals})
+* The server generates a fresh challenge (CAPTCHA/ Turnstile) and sends it to the user along with the TI's commitments
+*/
+rule Srv_present_challenge:
+    let get_content_request = <'1', $Usr, URL(url)>
+        captcha = <'2', $Srv, URL(url), Challenge(~challenge), Y>
+    in
+    [ 
+        In_S(~chId_srv_usr, $Usr, $Srv, get_content_request),                                                  // the server received the request for the content
+        State_Srv_setup($Srv, $Ti, Y), 
+        Fr(~challenge),
+        Srv_Usr_chan(~chId_srv_usr, $Usr, $Srv)                                                                          // the server generates a fresh challenge
+    ] 
+    --[ 
+        SrvPresentChallenge($Srv, $Usr, $Ti, ~challenge, url), 
+        Unique(<$Srv, $Usr, $Ti, url>) 
+    ]->
+    [ 
+        Out_S(~chId_srv_usr, $Srv, $Usr, captcha),                                                             // send the challenge to the user
+        State_Srv_challenge(~chId_srv_usr, $Srv, $Usr, $Ti, ~challenge, url, Y) 
+    ] 
+
+/*
+* 3. Usr -> Srv: Send a solution to the challenge and generated blinded tokens (SOL(CHL), blindedTokens)
+* The user sends a solution to the challenge back to the server. The user also generates 3 blinded tokens
+*/
+rule Usr_send_solution:
+    let captcha = <'2', $Srv, URL(url), Challenge(challenge), Y>
+        blindedToken = blind(h1(~t), ~r)                                                          // T=H(~t), blind T: T~ = T^r
+        blindedToken1 = blind(h1(~t1), ~r1)
+        blindedToken2 = blind(h1(~t2), ~r2)
+        solution = <'3', $Usr, UserSolution(~solution), URL(url), BlindedToken(blindedToken), BlindedToken(blindedToken1), BlindedToken(blindedToken2)>
+    in
+    [ 
+        In_S(~chId_srv_usr, $Srv, $Usr, captcha),                                                              // the user received the challenge
+        State_Usr_setup($Usr, $Srv, X, P, Q), 
+        State_Usr_request_content(~chId_srv_usr, $Usr, $Srv, url), 
+        Fr(~solution),                                                                          // the user generates a fresh solution
+        Fr(~t), 
+        Fr(~r), 
+        Fr(~t1),                                                                                // the user generates fresh values for the blinded tokens
+        Fr(~r1), 
+        Fr(~t2), 
+        Fr(~r2)
+    ]   
+    --[ 
+        UsrSendSolution($Usr, $Srv, $Ti, solution, blindedToken, blindedToken1, blindedToken2, url), 
+        Unique(<$Usr, $Srv, $Ti, url, ~solution, blindedToken, blindedToken1, blindedToken2, ~r, ~t, ~r1, ~t1, ~r2, ~t2, challenge>) 
+    ]->
+    [ 
+        Out_S(~chId_srv_usr, $Usr, $Srv, solution),                                                            // send the solution back to the server
+        State_Usr_solution(~chId_srv_usr, $Usr, $Srv, url, ~t, ~r, ~t1, ~r1, ~t2, ~r2, X, Y, P, Q) 
+    ] 
+
+/*
+* 4. Srv -> Ti: Send the solution and blinded tokens to the token issuer (SOL(CHL), blindedTokens)
+* The server forwards the solution and blinded tokens to the ticket isser (SOL(CHL), blindedTokens) to verify the solution
+*/
+rule Srv_rcv_solution_and_send_solution_to_Ti:
+    let solution = <'3', $Usr, UserSolution(~solution), URL(url), BlindedToken(blindedToken), BlindedToken(blindedToken1), BlindedToken(blindedToken2)>
+    in
+    [ 
+        In_S(~chId_srv_usr, $Usr, $Srv, solution),                                                             // the server received the solution from the user
+        State_Srv_challenge(~chId_srv_usr, $Srv, $Usr, $Ti, challenge, url, Y),
+        Srv_Ti_chan(~chId_srv_ti, $Ti, $Srv)
+    ] 
+    --[ 
+        SrvForwardSolution($Usr, $Srv, $Ti, solution, url), 
+        Unique(<$Ti, $Srv, url, ~solution, blindedToken, blindedToken1, blindedToken2, challenge>) 
+    ]->
+    [ 
+        Out_S(~chId_srv_ti, $Srv, $Ti, solution),                                               // forward the solution to the token issuer
+        State_Srv_solution_rcv_Ti(~chId_srv_ti, ~chId_srv_usr, $Usr, $Srv, $Ti, url, Y) 
+    ] 
+
+/*
+* 5. Ti -> Srv: Send the signed blinded tokens, and the proof pi_sk (<c,s>)
+* After verifying the solution, the token issuer signs the blinded tokens and sends them back to the server (DLEQ proof)
+*/
+rule Ti_verify_solution [derivchecks]:
+    let blindedToken = blind(h1(h1t), tr)                                                       // deconstruct the blinded tokens  
+        blindedToken1 = blind(h1(h1t1), tr1)
+        blindedToken2 = blind(h1(h1t2), tr2)
+    
+        solution = <'3', $Usr, UserSolution(~solution), URL(url), BlindedToken(blindedToken), BlindedToken(blindedToken1), BlindedToken(blindedToken2)>
+        signedBlTok = sign(blindedToken, secr_key)                                              // T~ = T^sk, sign the blinded tokens
+        signedBlTok1 = sign(blindedToken1, secr_key)
+        signedBlTok2 = sign(blindedToken2, secr_key)
+        A = pow(X, ~nonceT)                                                                     // commit to the nonce
+        B = pow(P, ~nonceT)                                                                     // commit to the nonce
+        c = h3(X, Y, P, Q, A, B) 
+        s = mod(minus(~nonceT, multiply(c, secr_key)), ord)
+        tokenProof = <'4', $Ti, URL(url), SignedToken(signedBlTok), SignedToken(signedBlTok1), SignedToken(signedBlTok2), CHash(c), SMod(s)>
+    in
+    [ 
+        In_S(~chId_srv_ti, $Srv, $Ti, solution),                                                // the ticket issuer received the solution and blinded tokens from the server
+        Fr(~nonceT),                                                                            // the ticket issuer generates a fresh nonce
+        State_Ti_setup($Ti, X, Y, P, Q, ord, secr_key),
+        Ti_chan(~chId_srv_ti, $Ti, $Srv)
+    ] 
+    --[ 
+        Eq(verifySolution(solution), true),                                                     // verify the solution is true
+        TiSignBlindedTokens($Ti, solution, secr_key, signedBlTok, signedBlTok1, signedBlTok2), 
+        TiSignsToken($Ti, h1t, secr_key), 
+        TiSignsToken($Ti, h1t1, secr_key), 
+        TiSignsToken($Ti, h1t2, secr_key)
+    ]-> 
+    [ 
+        Out_S(~chId_srv_ti, $Ti, $Srv, tokenProof),                                              // send the signed blinded tokens and the proof to the server
+        !State_Ti_signedBlTok(~chId_srv_ti, $Ti, $Srv, secr_key, signedBlTok, signedBlTok1, signedBlTok2) 
+    ] 
+
+/*
+* 6. Srv -> Usr: Forward the signed blinded tokens and the proof pi_sk (<c,s>). Generate and send the requested resource
+* The server sends the requested resource to the user along with the signed blinded tokens and the proof from the TI
+*/
+rule Srv_forward_proof:
+    let tokenProof = <'4', $Ti, URL(url), SignedToken(signedBlTok), SignedToken(signedBlTok1), SignedToken(signedBlTok2), CHash(c), SMod(s)>
+        message = <'5', URL(url), SignedToken(signedBlTok), SignedToken(signedBlTok1), SignedToken(signedBlTok2), CHash(c), SMod(s), WebResources(~resource)>
+    in
+    [ 
+        In_S(~chId_srv_ti, $Ti, $Srv, tokenProof),                                              // the server received the signed blinded tokens and the proof from the ticket issuer
+        Fr(~resource),                                                                          // the server generates the requested resource
+        State_Srv_solution_rcv_Ti(~chId_srv_ti, ~chId_srv_usr, $Usr, $Srv, $Ti, url, Y)
+    ] 
+    --[ 
+        SrvForwardSignedBlindedTokens($Srv, $Usr, c, s), 
+        Ti_verify_rcv(~chId_srv_ti, $Ti, $Srv, tokenProof) 
+    ]->
+    [ 
+        Out_S(~chId_srv_usr, $Srv, $Usr, message),                                              // forward the signed blinded tokens and the proof to the user
+        !State_Srv_send_proof(~chId_srv_ti, ~chId_srv_usr, $Srv, $Usr, url, Y) 
+    ] 
+
+/*
+* 7. Usr -> Srv: Verify the proof pi_sk and store the signed unblinded tokens
+* The user verifies the proof, unblinds the signed blinded tokens and stores them
+*/
+rule Usr_verify_token:
+    let message = <'5', URL(url), SignedToken(signedBlTok), SignedToken(signedBlTok1), SignedToken(signedBlTok2), CHash(c), SMod(s), WebResources(resource)>
+        A_1 = calcA(multiply(pow(X, s), pow(Y, c)))
+        B_1 = calcB(multiply(pow(P, s), pow(Q, c)))
+        c_1 = h3(X, Y, P, Q, A_1, B_1)
+        unblinded = unblind(signedBlTok, r)
+        unblinded1 = unblind(signedBlTok1,r1)
+        unblinded2 = unblind(signedBlTok2,r2)
+        
+    in
+    [ 
+        In_S(~chId_srv_usr, $Srv, $Usr, message),                                                              // the user received the signed blinded tokens and the proof from the server
+        State_Usr_solution(~chId_srv_usr, $Usr, $Srv, url, t, r, t1, r1, t2, r2, X, Y, P, Q)
+    ] 
+    --[ 
+        Eq(c, c_1),                                                                                             // verify the proof
+        UsrStoreUnblindedTokens($Usr, $Srv, t, t1, t2, unblinded, unblinded1, unblinded2, Y), 
+        Unique(<$Usr, $Srv, url, signedBlTok, c, s, unblinded, unblinded1, unblinded2>) 
+    ]->  
+    [ 
+        Store(~chId_srv_usr, $Usr, $Srv, <t, r, unblinded>), 
+        Store(~chId_srv_usr, $Usr, $Srv, <t1, r1, unblinded1>),                                                // store the signed unblinded tokens
+        Store(~chId_srv_usr, $Usr, $Srv, <t2, r2, unblinded2>) 
+    ] 
+
+/*
+* 8. Usr -> Srv: Send the next content requests
+* The user sends the next request to the server using one of the pairs (t, unblinded)
+*/
+rule Usr_send_request:
+    let newRequest = <'6', $Usr, URL(~request)>
+    in
+    [ 
+        Store(~chId_srv_usr, $Usr, $Srv, <t, r, unblinded>),                                                    // the user has consumes one of the signed unblinded tokens
+        Fr(~request)                                                                                            // the user generates a fresh request
+    ] 
+    --[ UsrSendRequest($Usr, $Srv, ~request, t) ]->
+    [ 
+        Out_S(~chId_srv_usr, $Usr, $Srv, newRequest),                                                          // send the next request to the server
+        State_Usr_request_token(~chId_srv_usr, $Usr, $Srv, t, unblinded, ~request) 
+    ]  
+
+/*
+* 9. Srv -> Usr: Send the challenge and the list of commitments
+* The server sends a new challenge and the list of commitments to the user
+*/
+rule Srv_send_new_challenge:
+    let msg = <'6', $Usr, URL(request)>
+        chlg = <'7', $Srv, Challenge(~newChlg), Y>    
+    in
+    [ 
+        In_S(~chId_srv_usr, $Usr, $Srv, msg),                                                                  // the server received the next request from the user
+        !State_Srv_send_proof(~chId_srv_ti, ~chId_srv_usr, $Srv, $Usr, url, Y), 
+        Fr(~newChlg)                                                                            // the server generates a fresh challenge
+    ] 
+    --[ 
+        SrvPresentNewChallenge($Srv, $Usr, ~newChlg), 
+        Unique(<$Srv, $Usr, ~newChlg>) 
+    ]->
+    [ 
+        Out_S(~chId_srv_usr, $Srv, $Usr, chlg),                                                                // send the new challenge to the user
+        State_Srv_challenge_new(~chId_srv_ti, ~chId_srv_usr, $Srv, $Usr, ~newChlg, url, request) 
+    ] 
+
+/*
+* 10. Usr -> Srv: Send the stored token to the server and HMAC
+* The user computes a shared key and HMAC to send the stored token to the server
+*/
+rule Usr_send_stored_token:
+    let chlg = <'7', $Srv, Challenge(newChlg), Y>
+        key = h2(t, unblinded)                                                                  // compute the key
+        request_binding_data = CalcR($Usr, $Ti, request)                                        // compute the input data R
+        s = HMAC(key, request_binding_data)                                                     // compute the HMAC
+        message = <'8', $Usr, Challenge(newChlg), URL(request), Token(t), SHMac(s)>
+    in
+    [ 
+        In_S(~chId_srv_usr, $Srv, $Usr, chlg),                                                                 // the user received the challenge and the list of commitments from the server
+        State_Usr_request_token(~chId_srv_usr, $Usr, $Srv, t, unblinded, request)
+    ] 
+    --[ 
+        Unique(<$Usr, $Srv, t, unblinded>),
+        UsrSendStoredToken($Usr, $Srv, t, unblinded),
+        Usr_token_send(~chId_srv_usr, $Usr, $Srv, message)
+    ]->
+    [ 
+        Out_S(~chId_srv_usr, $Usr, $Srv, message),                                                             // send the stored token to the server
+        State_Usr_send_stored_token(~chId_srv_usr, $Usr, $Srv, request, t) 
+    ] 
+
+/*
+* 11. Srv -> Ti: Forward the stored token to the token issuer
+*/
+rule Srv_forward_stored_token:
+    let msg_in = <'8', $Usr, Challenge(newChlg), URL(request), Token(t), SHMac(s)>
+        msg_out = <'8', $Usr, URL(request), Token(t), SHMac(s)>
+    in
+    [ 
+        In_S(~chId_srv_usr, $Usr, $Srv, msg_in),                                                               // the server received the stored token from the user
+        State_Srv_challenge_new(~chId_srv_ti, ~chId_srv_usr, $Srv, $Usr, newChlg, url, request)
+    ] 
+    --[ 
+        SrvForwardStoredToken($Srv, $Ti, t), 
+        Unique(<$Srv, $Ti, request, t, s>),
+        Usr_token_rcv(~chId_srv_usr, $Usr, $Srv, msg_in)
+    ]->
+    [ 
+        Out_S(~chId_srv_ti, $Srv, $Ti, msg_out),                                                              // forward the stored token to the ticket issuer
+        State_Srv_forward_stored_token(t, ~chId_srv_ti, ~chId_srv_usr, $Srv, $Ti, request) 
+    ]
+
+/*
+* 12. Ti -> Srv: Verify the stored token and return whether the token is valid (true) or not (false)
+* The ticket issuer recomputes the shared key and HMAC and verifies the stored token (whether they are equal or not) and returns whether the token is valid or not
+*/
+rule Ti_verify_stored_token:
+    let msg = <'8', $Usr, URL(request), Token(t), SHMac(s)>
+        T_1 = sign(h1(t), secr_key)
+        key_1 = h2(t, T_1)
+        request_binding_data = CalcR($Usr, $Ti, request)
+        s_1 = HMAC(key_1, request_binding_data)
+        response=<'9', URL(request), true>
+    in
+    [ 
+        In_S(~chId_srv_ti, $Srv, $Ti, msg),                                                                   // the ticket issuer received the stored token from the server
+        !State_Ti_signedBlTok(~chId_srv_ti, $Ti, $Srv, secr_key, signedBlTok, signedBlTok1, signedBlTok2)
+    ]
+    --[ 
+        Eq(CheckTokenSpent($Ti, t), false),                                                    // check whether the token is spent
+        Eq(s, s_1),                                                                             // verify the stored token
+        TiVerifySignedToken($Ti, t, secr_key), 
+        Ti_verify_redeeming_sent(~chId_srv_ti, $Ti, $Srv, response)
+    ]->
+    [ 
+        Out_S(~chId_srv_ti, $Ti, $Srv, response),                                                             // send the response to the server
+        TokenSpent($Ti, $Usr, t)                                                                // save the token as spent  
+    ]                                    
+
+/*
+* 13. Srv -> Usr: Send the resource to the user if the token is valid
+*/
+rule Srv_send_new_res:
+    let response=<'9', URL(request), verified>
+        msg=<'10', URL(request), WebResources(~newRes)>
+    in
+    [ 
+        In_S(~chId_srv_ti, $Ti, $Srv, response),                                                              // the server received the response from the ticket issuer
+        Fr(~newRes), 
+        State_Srv_forward_stored_token(t, ~chId_srv_ti, ~chId_srv_usr, $Srv, $Ti, request)
+    ]
+    --[ 
+        Eq(verified, true),                                                                     // verify the token is valid 
+        SrvSendNewResource($Srv, $Usr, ~newRes, t), 
+        Unique(<$Srv, $Usr, ~newRes>),
+        Ti_verify_redeeming_rcv(~chId_srv_ti, $Ti, $Srv, response)
+    ]-> 
+    [ Out_S(~chId_srv_usr, $Srv, $Usr, msg) ]                                                                  // send the resource to the user
+
+/*
+* 14. Usr -> Srv: Receive the resource
+*/
+rule Usr_receive_res:
+    let
+        msg=<'10', URL(request), WebResources(newRes)>
+    in
+    [ 
+        In_S(~chId_srv_usr, $Srv, $Usr, msg),                                                                  // the user received the resource from the server
+        State_Usr_send_stored_token(~chId_srv_usr, $Usr, $Srv, request, t)
+    ] 
+    --[ UsrReceivedNewResource($Usr, $Srv, request, t, newRes) ]->
+    []
+
+
+/*
+* Lemma to prove the single signing key property of the server
+* For two users receiving tokens from the same ticket issuer, the commitments they receive are the same
+*/
+lemma single_signing_key:
+" All user user1 server t t1 t2 tok tok1 tok2 unbl unbl1 unbl2 unblinded unblinded1 unblinded2 commitment1 commitment2
+    ticketIssuer Y secr_key
+    #t01 #t02 #t03
+    .
+    Setup_Ti(ticketIssuer, Y, secr_key) @ t01
+    &
+    UsrStoreUnblindedTokens(user, server, t, t1, t2, unbl, unbl1, unbl2, commitment1) @ t02
+    &
+    UsrStoreUnblindedTokens(user1, server, tok, tok1, tok2, unblinded, unblinded1, unblinded2, commitment2) @ t03
+    & (All x #i #j. Unique(x) @#i & Unique(x) @#j ==> #i = #j)
+    & #t01 < #t02
+    & #t01 < #t03
+    ==>
+    (Y = commitment1) & (Y = commitment2)
+"
+
+/*
+* Lemma to prove the one more token security property. 
+* If the ticket issuer verifies the signed token, then the ticket issuer must have signed it before with the same signing key
+* TO BE PROVEN MANUALLY
+*/
+#ifdef MANUAL
+lemma one_more_token_security:
+"All ticketIssuer server user t Y secr_key res #i #k #l.
+    Setup_Ti(ticketIssuer, Y, secr_key) @ i
+    &
+    TiVerifySignedToken(ticketIssuer, t, secr_key) @ k
+    & 
+    SrvSendNewResource(server, user, res, t) @ l
+    &
+    #i < #k
+    &
+    #k < #l
+    ==>
+    ( Ex #j.
+        TiSignsToken(ticketIssuer, t, secr_key) @ j 
+        &
+        #j < #k
+    )
+"
+#endif
+
+/*
+* Correctness lemma
+*/
+lemma prove_correctness:exists-trace
+" Ex user server url Y secr_key ticketIssuer challenge solution blindedToken blindedToken1 blindedToken2 c s 
+    signedBlTok signedBlTok1 signedBlTok2
+    t1 t2 t3 unblinded unblinded1 unblinded2 
+    request1 newchallenge newRes1 
+	request2 newRes2 request3 newRes3
+    #t00 #t01 #t02 #t03 #t04 #t05 #t06 #t07 #t08 #t09 #t10 #t11 #t12 #t13 #t14 #t15 #t16 #t17 #t18 #t19 #t20
+    .
+    Setup_Ti(ticketIssuer, Y, secr_key) @ t00
+    & Setup_Srv(server, ticketIssuer, Y) @ t01
+    & Setup_Usr(user, server, Y) @ t02
+    & RequestContent(user, server, url) @ t03
+    & SrvPresentChallenge(server, user, ticketIssuer, challenge, url) @ t04
+    & UsrSendSolution(user, server, ticketIssuer, solution, blindedToken, blindedToken1, blindedToken2, url) @ t05
+    & SrvForwardSolution(user, server, ticketIssuer, solution, url) @ t06
+    & TiSignBlindedTokens(ticketIssuer, solution, secr_key, signedBlTok, signedBlTok1, signedBlTok2) @ t07
+    & SrvForwardSignedBlindedTokens(server, user, c, s) @ t08
+    & UsrStoreUnblindedTokens(user, server, t1, t2, t3, unblinded, unblinded1, unblinded2, Y) @ t09
+    & UsrSendRequest(user, server, request1, t1) @ t10
+    & SrvPresentNewChallenge(server, user, newchallenge) @ t11
+    & UsrSendStoredToken(user, server, t1, unblinded) @ t12
+    & SrvForwardStoredToken(server, ticketIssuer, t1) @ t13
+    & TiVerifySignedToken(ticketIssuer, t1, secr_key) @ t14
+    & SrvSendNewResource(server, user, newRes1, t1) @ t15
+    & UsrReceivedNewResource(user, server,request1, t1, newRes1) @ t16
+    & UsrSendRequest(user, server, request2, t2) @ t17
+    & UsrReceivedNewResource(user, server,request2, t2, newRes2) @ t18
+    & UsrSendRequest(user, server, request3, t3) @ t19
+    & UsrReceivedNewResource(user, server,request3, t3, newRes3) @ t20
+    & #t00 < #t01
+    & #t01 < #t02
+    & #t02 < #t03
+    & #t03 < #t04
+    & #t04 < #t05
+    & #t05 < #t06
+    & #t06 < #t07
+    & #t07 < #t08
+    & #t08 < #t09 
+    & #t09 < #t10
+    & #t10 < #t11
+    & #t11 < #t12
+    & #t12 < #t13
+    & #t13 < #t14
+    & #t14 < #t15
+	& #t15 < #t16
+    & not (request1 = request2) & not(request1=request3) & not(request2=request3)
+    & (All x #i #j. Unique(x) @#i & Unique(x) @#j ==> #i = #j)
+    & not(Ex x #c. Rev(x, 'secureChannel')@c)
+"
+
+end

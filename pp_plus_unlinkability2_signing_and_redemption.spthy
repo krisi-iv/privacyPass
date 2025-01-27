@@ -1,0 +1,216 @@
+/* ==============================================================================
+summary of summaries:
+
+analyzed: pp_plus_unlinkability2_signing_and_redemption.spthy
+
+  processing time: 892.02s
+
+  RHS :  correctness (exists-trace): verified (13 steps)
+  LHS :  correctness (exists-trace): verified (13 steps)
+  DiffLemma:  Observational_equivalence : verified (11107 steps)
+
+==============================================================================
+*/
+
+theory PrivacyPassPlusUnlinkability2_SigningAndRedemption
+begin
+ 
+functions: h1/1, pow/2, h3/6, inverse/1, mod/2, multiply/2, minus/2, blind/2, BlindedToken/1, SignedToken/1, SrvSignedToken/1, sign/2, unblind/2,
+    request_binding_data/0, h2/2, HMAC/2
+equations [convergent]:
+    unblind(sign(blind(h1(x),r),secr_key),r) = sign(h1(x),secr_key),
+	unblind(sign(sign(blind(h1(x),r),secr_key1),secr_key2),r) = sign(sign(h1(x),secr_key1),secr_key2)
+restriction single_ti: "All #i #j ti Y sk1 ti2 Y2 sk2. Setup_Ti(ti, Y, sk1) @ i & Setup_Ti(ti2, Y2, sk2) @ j ==> #i = #j"
+
+// the following two rules are used to model the secure channel used in the protocol
+rule ChanOut_S:
+    [ Out_S($A,$B,x) ]
+    --[ ChanOut_S($A,$B,x) ]->
+    [ Sec($A,$B,x) ]
+
+rule ChanIn_S:
+    [ Sec($A,$B,x) ]
+    --[ ChanIn_S($A,$B,x) ]->
+    [ In_S($A,$B,x) ]
+
+// allowing the TI to leak its secret key 
+rule Ti_leaked_signing_key:
+    [ LeakKeys($Ti, secr_key) ]
+    --[ TiLeakedKey($Ti, secr_key) ]->
+    [ Out(secr_key) ]
+
+// setting up the ticket issuer with its secret key, the order of the group, the generators of the group, and the commitments
+rule Setup_Ti:
+    let Y = pow(X,secr_key) // Y = X^sk
+        Q = pow(P,secr_key) // Q = P^sk
+    in
+    [ 
+        Fr(X), 
+        Fr(P), 
+        Fr(ord), 
+        Fr(secr_key) 
+    ]
+    --[ 
+        Setup_Ti($Ti, Y, secr_key), 
+        Unique(<$Ti, X, Y, P, Q, ord, secr_key>)
+    ]->
+    [ 
+        LeakKeys($Ti, secr_key),
+        State_Ti_setup($Ti, X, Y, P, Q, ord, secr_key), 
+        State_Srv_Ti($Ti, Y), 
+        !State_Usr_Ti($Ti, X, P, Q)
+    ]
+
+// setting up the server with the commitment of the ticket issuer and knowledge of the ticket issuer
+rule Setup_Srv:
+    [ 
+        Fr(secr_key_srv), 
+        State_Srv_Ti($Ti, Y) 
+    ]
+    --[ 
+        Setup_Srv($Ti, $Srv, Y, secr_key_srv)
+    ]->
+    [ 
+        State_Srv_setup($Srv, $Ti, Y, secr_key_srv),
+        !State_Srv_Usr($Srv, $Ti, Y)
+    ]
+
+// setting up the user with the commitment of the server and knowledge of the server
+rule Setup_Usr:
+    [ 
+        !State_Usr_Ti($Ti, X, P, Q), 
+        !State_Srv_Usr($Srv, $Ti, Y)
+    ]
+    --[ 
+        Setup_Usr($Usr, $Srv, Y)
+    ]->
+    [ 
+        State_Usr_setup($Usr, $Srv, X, P, Q)
+    ]
+
+// User generates blinded tokens - 2 for user1 and 1 for user2 and sends them to the server and out over the insecure channel
+rule Usr_send_token:
+    let
+        Usr1BlindedToken = blind(h1(~t),~r) // T=H(~t), blind T: T~ = T^r
+        Usr1BlindedToken2 = blind(h1(~t2),~r2) 
+        Usr2BlindedToken = blind(h1(~t1),~r1)
+        msg = <'1',BlindedToken(Usr1BlindedToken), BlindedToken(Usr1BlindedToken2), BlindedToken(Usr2BlindedToken)>
+    in
+    [ 
+        Fr(~t), 
+        Fr(~r), 
+        Fr(~t1), 
+        Fr(~r1), 
+        Fr(~t2), 
+        Fr(~r2),
+        State_Usr_setup($Usr, $Srv, X, P, Q)
+    ] // the user generates fresh values for t, r, t1, r1, t2, r2 
+    --[ SendToken($Usr, $Srv, Usr1BlindedToken)]->
+    [ Out_S($Usr, $Srv, msg), Out(<msg>), State_Usr_blind($Usr, $Srv, ~t, ~t1, ~t2, ~r, ~r1, ~r2)]
+
+// the server forwards the blinded tokens to the TI
+rule Srv_forward_to_Ti [derivchecks]:
+    let msg = <'1',BlindedToken(Usr1BlindedToken), BlindedToken(Usr1BlindedToken2), BlindedToken(Usr2BlindedToken)>
+    in
+    [
+        In_S($Usr, $Srv, msg), 
+        State_Srv_setup($Srv, $Ti, Y, secr_key_srv)
+    ]
+    --[
+        ForwardTokens($Srv, $Usr, $Ti, msg)
+    ]->
+    [
+        Out_S($Srv, $Ti, msg),
+        State_Srv_forward($Srv, $Usr, $Ti, secr_key_srv)
+    ]
+
+// Ti signs the tokens and sends them back to the server and out over the insecure channel
+rule Ti_sign_tokens [derivchecks]:
+    let msg = <'1',BlindedToken(Usr1BlindedToken), BlindedToken(Usr1BlindedToken2), BlindedToken(Usr2BlindedToken)>
+        Usr1SignedToken=sign(Usr1BlindedToken, secr_key)
+        Usr1SignedToken2=sign(Usr1BlindedToken2, secr_key)
+        Usr2SignedToken=sign(Usr2BlindedToken, secr_key)
+        out=<'2',SignedToken(Usr1SignedToken), SignedToken(Usr1SignedToken2), SignedToken(Usr2SignedToken)>
+    in
+    [ In_S($Srv, $Ti, msg), State_Ti_setup($Ti, X, Y, P, Q, ord, secr_key) ]
+    --[ GenProof($Ti, $Usr, Usr1SignedToken) ]->
+    [ Out_S($Ti, $Srv, out), Out(out) ]
+
+// the server signs the TI-signed tokens and sends them back to the user and out over the insecure channel
+rule Srv_sign_forward_Ti_tokens [derivchecks]:
+    let rcv=<'2',SignedToken(Usr1SignedToken), SignedToken(Usr1SignedToken2), SignedToken(Usr2SignedToken)>
+        Usr1srvSignedToken = sign(Usr1SignedToken, secr_key_srv)
+        Usr1srvSignedToken2 = sign(Usr1SignedToken2, secr_key_srv)
+        Usr2srvSignedToken = sign(Usr2SignedToken, secr_key_srv)
+        out=<'3',SignedToken(Usr1SignedToken), SignedToken(Usr1SignedToken2), SignedToken(Usr2SignedToken), SrvSignedToken(Usr1srvSignedToken), SrvSignedToken(Usr1srvSignedToken2), SrvSignedToken(Usr2srvSignedToken)/*, SrvSignedToken(Usr2srvSignedToken2)*/>
+    in
+    [
+        In_S($Ti, $Srv, rcv),
+        State_Srv_forward($Srv, $Usr, $Ti, secr_key_srv)
+    ]
+    --[
+        SrvSignToken($Srv, $Usr, Usr1srvSignedToken)
+    ]->
+    [
+        Out_S($Srv, $Usr, out), 
+        Out(out)
+    ]
+
+// the user unblinds the tokens and computes the key and HMAC values for the TI and the server corresponding to each token
+rule Usr_unblind_tokens [derivchecks]:
+    let Usr1UnblindedToken=unblind(Usr1SignedToken, r)
+        Usr1UnblindedToken2=unblind(Usr1SignedToken2, r2)
+        Usr2UnblindedToken=unblind(Usr2SignedToken, r1)
+
+        Usr1UnblindedSrvToken=unblind(Usr1srvSignedToken, r)
+        Usr1UnblindedSrvToken2=unblind(Usr1srvSignedToken2, r2)
+        Usr2UnblindedSrvToken=unblind(Usr2srvSignedToken, r1)
+
+        Usr1TokenKey = h2(t, Usr1UnblindedToken)
+        Usr1TokenHMAC = HMAC(Usr1TokenKey, request_binding_data)
+        Usr1Token_key_verify_srvSignedToken = h2(t, Usr1UnblindedSrvToken)
+        Usr1Token_hash_srvSignedToken = HMAC(Usr1Token_key_verify_srvSignedToken, request_binding_data)
+
+        Usr1Token2Key = h2(t1, Usr1UnblindedToken2)
+        Usr1Token2HMAC = HMAC(Usr1Token2Key, request_binding_data)
+        Usr1Token2_key_verify_srvSignedToken = h2(t, Usr1UnblindedSrvToken2)
+        Usr1Token2_hash_srvSignedToken = HMAC(Usr1Token2_key_verify_srvSignedToken, request_binding_data)
+
+        Usr2TokenKey = h2(t2, Usr2UnblindedToken)
+        Usr2TokenHMAC = HMAC(Usr2TokenKey, request_binding_data)
+        Usr2Token_key_verify_srvSignedToken = h2(t, Usr2UnblindedSrvToken)
+        Usr2Token_hash_srvSignedToken = HMAC(Usr2Token_key_verify_srvSignedToken, request_binding_data)
+        out=<'3',SignedToken(Usr1SignedToken), SignedToken(Usr1SignedToken2), SignedToken(Usr2SignedToken), SrvSignedToken(Usr1srvSignedToken), SrvSignedToken(Usr1srvSignedToken2), SrvSignedToken(Usr2srvSignedToken)>
+    in
+    [
+        In_S($Srv, $Usr, out),  
+        State_Usr_blind($Usr, $Srv, t, t1, t2, r, r1, r2)
+    ]
+    --[ UnblindedTok($Usr, $Srv, Usr1UnblindedToken, Usr1UnblindedSrvToken)]->
+    [
+        Out(<<t, Usr1TokenHMAC, Usr1Token_hash_srvSignedToken>, diff(<t1, Usr1Token2HMAC, Usr1Token2_hash_srvSignedToken>, <t2, Usr2TokenHMAC, Usr2Token_hash_srvSignedToken>)>)
+    ]
+
+/*
+* Correctness lemma
+*/
+lemma correctness: exists-trace
+" Ex user server ti Y secr_key secr_key_srv blinded msg signed srv_signed srv_unblinded unblinded
+    #t00 #t01 #t02 #t03 #t04 #t05 #t06
+    .
+    Setup_Ti(ti, Y, secr_key) @ t00
+    & Setup_Srv(ti, server, Y, secr_key_srv) @ t01
+    & SendToken(user, server, blinded) @ t02
+    & ForwardTokens(server, user, ti, msg) @ t03
+    & GenProof(ti, user, signed) @ t04
+    & SrvSignToken(server, user, srv_signed) @ t05
+    & UnblindedTok(user, server, unblinded, srv_unblinded) @ t06
+    & #t00 < #t01
+    & #t01 < #t02
+    & #t02 < #t03
+    & #t03 < #t04
+    & #t04 < #t05
+    & #t05 < #t06
+    & not(user = server) & not(user = ti) & not(ti = server)
+"
+end

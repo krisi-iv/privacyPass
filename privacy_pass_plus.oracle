@@ -1,0 +1,89 @@
+#!/usr/bin/python3
+
+import re
+import os
+import sys
+debug = True
+
+lines = sys.stdin.readlines()
+l1 = []
+l2 = []
+l3 = []
+l4 = []
+l5 = []
+l6 = []
+lemma = sys.argv[1]
+
+# INPUT:
+# - lines contain a list of "%i:goal" where "%i" is the index of the goal
+# - lemma contain the name of the lemma under scrutiny
+# OUTPUT:
+# - (on stdout) a list of ordered index separated by EOL
+
+
+for line in lines:
+	num = line.split(':')[0]
+	if "one_more_token_security" in lemma:
+		print ("applying oracle to "+lemma)
+		if 'State' in line:
+			l1.append(num)
+		if '!KU( sign(blind(h1(' in line:
+			l1.append(num)
+		if '!KU( BlindedToken(blind(h1(~' in line:
+			l1.append(num)
+		if '!KU( blind(h1(' in line:
+			l1.append(num)
+		if '!KU( h1(' in line:
+			l1.append(num)
+		if '!KU( h2(' in line:
+			l1.append(num)
+		if '!KU( h3(' in line:
+			l1.append(num)
+		if '!KU( CHash(h3(' in line:
+			l1.append(num)
+		if '!KU( CalcR(' in line or ('!KU( ~request' in line):
+			l1.append(num)
+		if 'KU( HMAC(h2(' in line:
+			l1.append(num)
+		if '!KU( ~t' in line:
+			l1.append(num)
+		if 'KU( sign(signedToken, ~n' in line:
+			l1.append(num)
+		if '!KU( sign(h1(t' in line:
+			l1.append(num)
+		if '!KU( sign(sign(h1(' in line:
+			l1.append(num)
+		if '!KU( ~r' in line:
+			l1.append(num)
+		if '!KU( ~n' in line:
+			l1.append(num)
+		if '!KU( mod(minus' in line:
+			l1.append(num)
+		if '!KU( minus' in line:
+			l1.append(num)
+		if '!KU( multiply(h3(' in line:
+			l1.append(num)
+		if 'SignedToken(sign(blind(h1(~t' in line:
+			l2.append(num)
+		if '!KU( SHMac(HMAC(h2(' in line:
+			l2.append(num)
+		if 'SHMac(HMAC(h2(' in line:
+			l2.append(num)
+		if 'In_S' in line and ("<'8'" in line or ("<'5'" in line) or ("<'4'" in line)) :
+			l3.append(num)
+		if 'In_S' in line:
+			l4.append(num)
+
+	elif "prove_correctness" in lemma:
+		print ("applying oracle to "+lemma)
+		if 'In_S' in line:
+			l1.append(num)
+
+	else:
+		print ("applying standard heuristic to "+lemma)
+		exit(0)		
+
+# Ordering all goals by ranking (higher first)
+ranked=l1+l2+l3+l4+l5+l6
+for goal in ranked:
+	print (goal)
