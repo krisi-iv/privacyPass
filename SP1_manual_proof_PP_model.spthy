@@ -1,6 +1,6 @@
 /*
 Instructions to run: 
-interactive: tamarin-prover interactive PP_model.spthy
+interactive: tamarin-prover interactive SP1_manual_proof_PP_model.spthy
 */
 
 theory PP_model begin
