@@ -35,6 +35,8 @@
 * prove_correctness (exists-trace): verified (59 steps)
 * ==============================================================================
 *
+* the flag "MANUAL" is set for the one_more_token_security lemma to indicate that it has to be proven manually and the attack trace found is availabe in the PP_model.spthy file
+* 
 * the "paper" in the comments in this file refer to the "Privacy Pass: Bypassing Internet Challenges Anonymously" paper
 */
 
