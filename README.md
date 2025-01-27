@@ -10,15 +10,14 @@
 2. **Oracles**
     - `privacy_pass_plus.oracle`: The oracle used to speed up the verification of the correctness and one-more-token security property of Privacy Pass Plus.
 3. **Manual Attack Trace**
-    - `PP_model.spthy`: attack trace for the one-more-token security property for the Privacy Pass model (`privacyPass.spthy`).
+    - `SP1_manual_proof_PP_model.spthy`: attack trace for the one-more-token security property for the Privacy Pass model (`privacyPass.spthy`).
 
 ## Flags 
-The flag "MANUAL" is set for the `one_more_token_security` lemma in the `privacyPass.spthy` model to indicate that it has to be proven manually and the attack trace found is availabe in the `PP_model.spthy` file.
-
+The flag "MANUAL" is set for the `one_more_token_security` lemma in the `privacyPass.spthy` model to indicate that it has to be proven manually and the attack trace found is available in the `SP1_manual_proof_PP_model.spthy` file.
 
 ## Reproducing The Results
 
 The models have been tested with version 1.10.0 of the [tamarin-prover](https://github.com/tamarin-prover/tamarin-prover) (installation and usage guide available in chapter 2 of the [manual](https://tamarin-prover.com/manual/master/book/002_installation.html)).
 
-The beginning of each `.spthy` file contains instructions on how the model can be verified using Tamarin are included along with the results we obtained from the runs. 
+The beginning of each `.spthy` file contains instructions on how the model can be verified using Tamarin, along with the results we obtained from the runs. 
 
