@@ -1,4 +1,6 @@
 /*
+* Protocol: PP+
+* 
 * Actors:
 * Usr - User/ Client
 * Srv - Server
@@ -20,7 +22,10 @@
 * 13. Srv -> Usr: Send the resource to the user
 * 14. Usr -> Srv: Receive the resource
 *
-* Using Tamarin 1.10.0, the protocol was verified by running the following command: tamarin-prover privacy_pass_3_tokens.spthy --prove
+* Instructions to run: 
+* automatic: tamarin-prover privacyPass_plus.spthy --prove
+* interactive: tamarin-prover interactive privacyPass_plus.spthy 
+* 
 * Results:
 * ==============================================================================
 * summary of summaries:
