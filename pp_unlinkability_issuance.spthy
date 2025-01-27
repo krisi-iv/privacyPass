@@ -1,12 +1,20 @@
+/*
+Protocol: PP_1
 
-// ==============================================================================
-// summary of summaries:
-// analyzed: pp_unlinkability_1_blindedTokens.spthy
-// processing time: 21.88s
-// DiffLemma:  Observational_equivalence : verified (450 steps)
-// ==============================================================================
+Instructions to run: 
+automatic: tamarin-prover pp_unlinkability_issuance.spthy --diff --prove
+interactive: tamarin-prover interactive pp_unlinkability_issuance.spthy --diff 
 
-theory PrivacyPassUnlinkability1_BlindedTokens
+Results:
+==============================================================================
+summary of summaries:
+analyzed: pp_unlinkability_issuance.spthy
+processing time: 21.88s
+DiffLemma:  Observational_equivalence : verified (450 steps)
+==============================================================================
+*/
+
+theory PrivacyPassUnlinkabilityIssuancePhase
 begin
  
 functions: h1/1, pow/2
