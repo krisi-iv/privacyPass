@@ -1,7 +1,15 @@
-/*==============================================================================
+/*
+Protocol: PP_2
+
+Instructions to run: 
+automatic: tamarin-prover pp_unlinkability_redemption.spthy --diff --prove
+interactive: tamarin-prover interactive pp_unlinkability_redemption.spthy --diff 
+
+Results:
+==============================================================================
 summary of summaries:
 
-analyzed: pp_unlinkability2_signing_and_redemption.spthy
+analyzed: pp_unlinkability_redemption.spthy
 
     processing time: 438.69s
 
@@ -12,7 +20,7 @@ analyzed: pp_unlinkability2_signing_and_redemption.spthy
 ==============================================================================
 */
 
-theory PrivacyPassUnlinkability2_SigningAndRedemption
+theory PrivacyPassUnlinkabilityRedemptionPhase
 begin
  
 functions: h1/1, pow/2, blind/2, BlindedToken/1, SignedToken/1, SrvSignedToken/1, sign/2, unblind/2, 
