@@ -1,3 +1,8 @@
+/*
+Instructions to run: 
+interactive: tamarin-prover interactive PP_model.spthy
+*/
+
 theory PP_model begin
 
 // Function signature and definition of the equational theory E
@@ -27,8 +32,6 @@ equations:
     verifySolution(sol) = true
 
 
-
-heuristic: O "privacy_pass.oracle"
 
 restriction equality:
   "∀ #i x y. (Eq( x, y ) @ #i) ⇒ (x = y)"
