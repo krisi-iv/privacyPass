@@ -13,7 +13,7 @@ functions: BlindedToken/1, CHash/1, CalcR/3, Challenge/1,
            UserSolution/1, WebResources/1, blind/2, calcA/1, calcB/1, false/0,
            fst/1, h1/1, h2/2, h3/6, inverse/1, minus/2, mod/2, multiply/2,
            pair/2, pow/2, sign/2, snd/1, true/0, unblind/2, verifySolution/1
-equations:
+equations [convergent]:
     CheckTokenSpent($Srv, t) = false,
     calcA(multiply(pow(X,
                        mod(minus(t, multiply(h3(X, Y, P, Q, Xt, Pt), k)), q)),
