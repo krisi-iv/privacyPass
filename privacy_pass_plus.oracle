@@ -1,0 +1,74 @@
+#!/usr/bin/python3
+
+import re
+import os
+import sys
+debug = True
+
+lines = sys.stdin.readlines()
+l1 = []
+l2 = []
+l3 = []
+l4 = []
+l5 = []
+l6 = []
+lemma = sys.argv[1]
+
+# INPUT:
+# - lines contain a list of "%i:goal" where "%i" is the index of the goal
+# - lemma contain the name of the lemma under scrutiny
+# OUTPUT:
+# - (on stdout) a list of ordered index separated by EOL
+
+
+for line in lines:
+	num = line.split(':')[0]
+	if "one_more_token_security" in lemma:
+		print ("applying oracle to "+lemma)
+
+		if 'State_' in line:
+			l1.append(num)
+		elif 'In_S' in line and ("<'8'" in line or ("<'5'" in line) or ("<'4'" in line)) :
+			l2.append(num)
+		elif 'KU( pow(~n,' in line or 'KU( ~n )' in line or 'KU( ~r )' in line or 'KU( ~r1 )' in line or 'KU( ~r2 )' in line or 'KU( ~t )' in line or 'KU( ~t1 )' in line or 'KU( ~t2 )' in line:
+			l3.append(num)
+		elif 'KU( Token(~t' in line:
+			l4.append(num)
+		elif 'SignedToken(sign(blind(h1(~t' in line or 'KU( sign(blind(h1(~t' in line or 'KU( blind(h1(~t' in line:
+			l5.append(num)
+		elif 'KU( HMAC(h2(' in line or 'KU( h2(t' in line or 'KU( sign(signedToken' in line or 'KU( ~n.' in line:
+			l6.append(num)
+
+	elif "prove_correctness" in lemma:
+		print ("applying oracle to "+lemma)
+		if 'In_S' in line:
+			l1.append(num)
+
+	elif "single_signing_key_original" in lemma:
+		print ("applying oracle to "+lemma)
+		if 'KU( pow(~n' in line or 'KU( ~n' in line:
+			l1.append(num)
+		elif 'In_S' in line:
+			l3.append(num)
+		elif 'State_' in line:
+			l3.append(num)
+
+	elif "single_signing_key_new" in lemma:
+		print ("applying oracle to "+lemma)
+		if '!KU( ~r' in line or '!KU( ~t' in line:
+			l1.append(num)
+		elif '!KU( blind(h1(' in line or '!KU( sign(blind(' in line or '!KU( h1(' in line:
+			l2.append(num)
+		elif 'SignedToken(sign(blind(h1(~t' in line:
+			l3.append(num)
+		elif 'In_S' in line or 'State' in line or 'UsrCreateToken(' in line or  'UsrVerifyAndStoreToken(' in line:
+			l4.append(num)
+
+	else:
+		print ("applying standard heuristic to "+lemma)
+		exit(0)		
+
+# Ordering all goals by ranking (higher first)
+ranked=l1+l2+l3+l4+l5+l6
+for goal in ranked:
+	print (goal)
