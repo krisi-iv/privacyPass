@@ -235,7 +235,6 @@ rule Usr_verify_tokens [derivchecks]:
 // The user generates fresh requests, unblinds the TI and server signed blinded tokens, computes the shared keys with the TI and server and the HMACs for each token
 rule User_Generates_Request:
     let seeds = <t, t1, t2>
-		//create the requests
 		
 		// unblind User1's first server token, compute the keys and HMACs for each unblinded token signed by the token issuer and by the server, and create a request
         Usr1UnblindedSrvToken = unblind(Usr1srvSignedToken, r)                                  // unblind the first TI and Server blinded signed token
@@ -293,3 +292,4 @@ lemma correctness: exists-trace
 "
 
 end
+
