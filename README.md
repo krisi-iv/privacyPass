@@ -7,9 +7,12 @@
     - `SP3_SP4_Observational_Equivalence/ pp_unlinkability_issuance.spthy`: Tamarin model for the unlinkability property in the issuance phase (*SP2*) of the Privacy Pass and Privacy Pass Plus protocols.
     - `SP3_SP4_Observational_Equivalence/ pp_unlinkability_redemption.spthy`: Tamarin model for the unlinkability property in the redemption phase (*SP3*) of the Privacy Pass protocol.
     - `SP3_SP4_Observational_Equivalence/ pp_plus_unlinkability_redemption.spthy`: Tamarin model for the unlinkability property in the redemption phase (*SP3*) of the Privacy Pass Plus protocol.
+    - `SP3_SP4_Observational_Equivalence/ pp_plus_unlinkability_redemption_junkTokens.spthy`: Tamarin model for the unlinkability property in the redemption phase (*SP3*) of the Privacy Pass Plus protocol in which we allow the generation of invalid tokens.
 2. **Oracles**
     - `privacy_pass_plus.oracle`: The oracle used to speed up the verification of the correctness, one-more-token security, and single signing key properties of Privacy Pass Plus.
     - `privacy_pass.oracle`: The oracle used to speed up the verification of the correctness and single signing key property of Privacy Pass.
+    - `SP3_SP4_Observational_Equivalence/ pp_unlinkability_redemption.oracle`: The oracle used to speed up the verification of the observational equivalence in the redemption phase (*SP3*) of the Privacy Pass protocol.
+    - `SP3_SP4_Observational_Equivalence/ pp_plus_unlinkability_redemption.oracle`: The oracle used to speed up the verification of the observational equivalence in the redemption phase (*SP3*) of the Privacy Pass Plus protocol.
 
 3. **Manual Attack Trace**
     - `Manual_Proof/ SP1_manual_proof_PP_model.spthy`: attack trace for the one-more-token security property for the Privacy Pass model (`privacyPass.spthy`).
@@ -26,4 +29,5 @@ The beginning of each `.spthy` file contains instructions on how the model can b
 
 
 The models dealing with observational equivalence and verifying (*SP2*) and (*SP3*) can be found in the folder `SP3_SP4_Observational_Equivalence`
+
 
