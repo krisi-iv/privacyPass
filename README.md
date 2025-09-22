@@ -8,7 +8,9 @@
     - `SP3_SP4_Observational_Equivalence/ pp_unlinkability_redemption.spthy`: Tamarin model for the unlinkability property in the redemption phase (*SP3*) of the Privacy Pass protocol.
     - `SP3_SP4_Observational_Equivalence/ pp_plus_unlinkability_redemption.spthy`: Tamarin model for the unlinkability property in the redemption phase (*SP3*) of the Privacy Pass Plus protocol.
 2. **Oracles**
-    - `privacy_pass_plus.oracle`: The oracle used to speed up the verification of the correctness and one-more-token security property of Privacy Pass Plus.
+    - `privacy_pass_plus.oracle`: The oracle used to speed up the verification of the correctness, one-more-token security, and single signing key properties of Privacy Pass Plus.
+    - `privacy_pass.oracle`: The oracle used to speed up the verification of the correctness and single signing key property of Privacy Pass.
+
 3. **Manual Attack Trace**
     - `Manual_Proof/ PP_model.spthy`: attack trace for the one-more-token security property for the Privacy Pass model (`privacyPass.spthy`).
 
@@ -21,5 +23,6 @@ The flag "MANUAL" is set for the `one_more_token_security` lemma in the `privacy
 The models have been tested with version 1.10.0 of the [tamarin-prover](https://github.com/tamarin-prover/tamarin-prover) (installation and usage guide available in chapter 2 of the [manual](https://tamarin-prover.com/manual/master/book/002_installation.html)).
 
 The beginning of each `.spthy` file contains instructions on how the model can be verified using Tamarin are included along with the results we obtained from the runs. 
+
 
 The models dealing with observational equivalence and verifying (*SP2*) and (*SP3*) can be found in the folder `SP3_SP4_Observational_Equivalence`
