@@ -52,9 +52,8 @@ equations [convergent]:
         )
     ) = Pt
 	
-// we only want a single TI	
+// the following restriction is used to allow only a single instance of the token issuer to be created in the protocol for this implementation
 restriction single_ti: "All #i #j ti Y sk1 ti2 Y2 sk2. Setup_Ti(ti, Y, sk1) @ i & Setup_Ti(ti2, Y2, sk2) @ j ==> #i = #j"
-
 // used to check the solution is indeed correct, the equality in the DLEQ proof holds, the token is stored in the token issuer's data store, and the HMACs are equal
 restriction equality: "All #i x y. Eq(x , y) @ i ==> x = y"
 
@@ -72,19 +71,18 @@ rule ChanIn_S:
 
 // setting up the token issuer with its secret key, the order of the group, the generators of the group, and the commitments
 rule Setup_Ti:
-    let Y = pow(X,secr_key) // Y = X^sk
+    let Y = pow(X,secr_key)                                                                     // Y = X^sk
     in
     [ 
         Fr(X), 
-        Fr(ord), 
-        Fr(secr_key) 
+        Fr(ord),                                                                                // the order of the group 
+        Fr(secr_key)                                                                            // the secret signing key of the token issuer
     ]
     --[ 
         Setup_Ti($Ti, Y, secr_key), 
         Unique(<$Ti, X, Y, ord, secr_key>)
     ]->
     [ 
-        //LeakKeys($Ti, secr_key),
         State_Ti_setup($Ti, X, Y, ord, secr_key), 
         State_Srv_Ti($Ti, Y), 
         !State_Usr_Ti($Ti, X)
@@ -120,59 +118,59 @@ rule Setup_Usr:
 // User generates 2 blinded tokens and a junk token (invalid format of the token)
 rule Usr_send_token:
     let
-        Usr1BlindedToken = blind(h1(~t), ~r) // T=H(~t), blind T: T~ = T^r
+        Usr1BlindedToken = blind(h1(~t), ~r)                                                    // T=H(~t), blind T: T~ = T^r
         Usr1BlindedToken2 = blind(h1(~t1), ~r1) 
         JunkToken = ~random_junk
+
         seeds = <~t, ~t1, ~t2>
-        tokens=<Usr1BlindedToken + Usr1BlindedToken2 + JunkToken>
+        tokens = <Usr1BlindedToken + Usr1BlindedToken2 + JunkToken>
         msg = <$Usr, $Srv, Usr1BlindedToken, Usr1BlindedToken2, JunkToken>
     in
-    // the user generates fresh values for t, r, t1, r1, t2, random_junk
     [ 
-        Fr(~t), 
-        Fr(~r), 
+        Fr(~t),                                                                                 // the users generate fresh seed values for the blinded tokens
         Fr(~t1), 
-        Fr(~r1), 
-        Fr(~t2), 
+        Fr(~t2),
+        Fr(~r),                                                                                 // the user generates fresh randomisation values for the blinded tokens
+        Fr(~r1),
         Fr(~r2),
-		Fr(~random_junk),
         State_Usr_setup($Usr, $Srv, X, Y)
-    ]  
+    ] 
     --[ SendToken($Usr, $Srv, tokens, seeds) ]->
     [ 
-        Out_S($Usr, $Srv, msg),
+        Out_S($Usr, $Srv, msg),                                                                 // send the blinded tokens to the server
         State_Usr_blind($Usr, $Srv, X, Y, ~t, ~t1, ~t2, ~r, ~r1, ~r2)
     ]
 
 
-// token Issuer and server sign the tokens
+// token issuer and server sign the tokens and the server sends them back to the user
 rule Ti_Srv_sign_tokens:
     let msg = < $Usr, $Srv, Usr1BlindedToken, Usr1BlindedToken2, JunkToken>
-		tokens=<Usr1BlindedToken + Usr1BlindedToken2 + JunkToken>
+		tokens = <Usr1BlindedToken + Usr1BlindedToken2 + JunkToken>
 		
-		// construct the ZKPs:
-		// first ZKP      
-        Usr1SignedToken=sign(Usr1BlindedToken, secr_key)         // token issuer signs the token                                                    
-		A = pow(X, ~nonceT) // commit to the nonce
+		// token issuer signs the tokens    
+        Usr1SignedToken=sign(Usr1BlindedToken, secr_key)                                                             
+        Usr1SignedToken2=sign(Usr1BlindedToken2, secr_key)
+        JunkSignedToken=sign(JunkToken, secr_key)
+
+        // NIZK DLEQ proof for Usr1BlindedToken
+		A = pow(X, ~nonceT) 
         B = pow(Usr1BlindedToken, ~nonceT)                                                                  
         c = h3(X, Y, Usr1BlindedToken, Usr1SignedToken, A, B) 
         s = mod(minus(~nonceT, multiply(c, secr_key)), ord)
 
-		// second ZKP          
-		Usr1SignedToken2=sign(Usr1BlindedToken2, secr_key)       // token issuer signs the token  
-        A1 = pow(X, ~nonceT1) 		// commit to the nonce
+		// NIZK DLEQ proof for Usr1BlindedToken2
+        A1 = pow(X, ~nonceT1) 		
         B1 = pow(Usr1BlindedToken2, ~nonceT1)                                                                  
         c1 = h3(X, Y, Usr1BlindedToken2, Usr1SignedToken2, A1, B1) 
         s1 = mod(minus(~nonceT1, multiply(c1, secr_key)), ord)
 
-		// third ZKP         
-		JunkSignedToken=sign(JunkToken, secr_key)		// token issuer signs the token  
-        A2 = pow(X, ~nonceT2) 		// commit to the nonce
+		// NIZK DLEQ proof for JunkToken 
+        A2 = pow(X, ~nonceT2) 		
         B2 = pow(JunkToken, ~nonceT2)                                                                  
         c2 = h3(X, Y, JunkToken, JunkSignedToken, A2, B2) 
         s2 = mod(minus(~nonceT2, multiply(c2, secr_key)), ord)
 		
-		//Server signs the tokens as well
+		//Server signs the tokens
 		Usr1srvSignedToken = sign(Usr1SignedToken, secr_key_srv)
         Usr1srvSignedToken2 = sign(Usr1SignedToken2, secr_key_srv)
         JunksrvSignedToken = sign(JunkSignedToken, secr_key_srv)
@@ -180,10 +178,10 @@ rule Ti_Srv_sign_tokens:
         msg_out = <$Ti, SignedToken(Usr1SignedToken), SignedToken(Usr1SignedToken2), SignedToken(JunkSignedToken), SrvSignedToken(Usr1srvSignedToken), SrvSignedToken(Usr1srvSignedToken2), SrvSignedToken(JunksrvSignedToken), CHash(c), SMod(s), CHash(c1), SMod(s1), CHash(c2), SMod(s2)>
     in
     [ 
-        In_S($Usr, $Srv, msg),
+        In_S($Usr, $Srv, msg),                                                                  // the server received the blinded tokens from the user
         State_Ti_setup($Ti, X, Y, ord, secr_key),
 		State_Srv_setup($Srv, $Ti, Y, secr_key_srv),
-		Fr(~nonceT),
+		Fr(~nonceT),                                                                            // the token issuer generates fresh nonces
 		Fr(~nonceT1),
 		Fr(~nonceT2)
     ]
@@ -191,31 +189,31 @@ rule Ti_Srv_sign_tokens:
         GenProofSignatures($Ti, $Usr, tokens, msg_out)
      ]->
     [ 
-		Out_S($Srv, $Usr, msg_out)
+		Out_S($Srv, $Usr, msg_out)                                                             // send the signed blinded tokens and the proofs to the user
 	]
 
-// the user verifies the token issuer's ZKPs on the tokens and unblinds the tokens signed by the token issuer
+// the user verifies the token issuer's NIZK proofs on the tokens and unblinds the tokens signed by the token issuer
 rule Usr_verify_tokens [derivchecks]:
     let msg_in = <$Ti, SignedToken(Usr1SignedToken), SignedToken(Usr1SignedToken2), SignedToken(JunkSignedToken), SrvSignedToken(Usr1srvSignedToken), SrvSignedToken(Usr1srvSignedToken2), SrvSignedToken(JunksrvSignedToken), CHash(c), SMod(s), CHash(c1), SMod(s1), CHash(c2), SMod(s2)>		
 		seeds = <t, t1, t2>
         
-        // Verify the ZKPs for each token
-		// Verify ZKP
+        // Verify NIZK DLEQ proof for Usr1BlindedToken 
         P = blind(h1(t), r) 
 		Q = Usr1SignedToken                                                                   
         A = calcA(multiply(pow(X, s), pow(Y, c)))
         B = calcB(multiply(pow(P, s), pow(Q, c)))
         c_v = h3(X, Y, P, Q, A, B)
 
-        // Verify ZKP_1
+        // Verify NIZK DLEQ proof for Usr1BlindedToken2
         P1 = blind(h1(t1), r1) 
 		Q1 = Usr1SignedToken2                                                                   
         A1 = calcA(multiply(pow(X, s1), pow(Y, c1)))
         B1 = calcB(multiply(pow(P1, s1), pow(Q1, c1)))
         c1_v = h3(X, Y, P1, Q1, A1, B1)
 
-        //Don't verify ZKP_2 (for the JunkToken)
-		
+        // Do NOT Verify NIZK DLEQ proof for the JunkToken
+
+        // unblind the token issuer signed tokens
 		Usr1unblinded = unblind(Usr1SignedToken, r)
         Usr1unblinded2 = unblind(Usr1SignedToken2,r1)
         Junkunblinded = unblind(JunkSignedToken,r2)
@@ -224,7 +222,9 @@ rule Usr_verify_tokens [derivchecks]:
         In_S($Srv, $Usr, msg_in),  
         State_Usr_blind($Usr, $Srv, X, Y, t, t1, t2, r, r1, r2)
     ]
-    --[ Eq(c, c_v),
+    --[ 
+        // verify the DLEQ proofs for Usr1BlindedToken and Usr1BlindedToken2
+        Eq(c, c_v),
         Eq(c1, c1_v),
         VerifyTok($Usr, $Srv, msg_in, seeds)
     ]->
@@ -232,35 +232,35 @@ rule Usr_verify_tokens [derivchecks]:
 		State_Usr_unblind($Usr, $Srv, $Ti, X, Y, t, t1, t2, r, r1, r2, Usr1unblinded, Usr1unblinded2, Junkunblinded, Usr1srvSignedToken, Usr1srvSignedToken2, JunksrvSignedToken)
     ]
 
-// The user ublinds the tokens signed by the token issuer and by the server, computes the key and HMAC for each of them, and creates a request
+// The user generates fresh requests, unblinds the TI and server signed blinded tokens, computes the shared keys with the TI and server and the HMACs for each token
 rule User_Generates_Request:
     let seeds = <t, t1, t2>
 		//create the requests
 		
 		// unblind User1's first server token, compute the keys and HMACs for each unblinded token signed by the token issuer and by the server, and create a request
-        Usr1UnblindedSrvToken=unblind(Usr1srvSignedToken, r)
-		key1=h2(t, Usr1unblinded) 
-		s1 = HMAC(key1, ~request)
-		Usr1Token_key_verify_srvSignedToken = h2(t, Usr1UnblindedSrvToken)
-		Usr1Token_hash_srvSignedToken = HMAC(Usr1Token_key_verify_srvSignedToken, ~request)
+        Usr1UnblindedSrvToken = unblind(Usr1srvSignedToken, r)                                  // unblind the first TI and Server blinded signed token
+		key1 = h2(t, Usr1unblinded)                                                             // compute the shared key with the TI 
+		s1 = HMAC(key1, ~request)                                                               // compute the HMAC for the TI
+		Usr1Token_key_verify_srvSignedToken = h2(t, Usr1UnblindedSrvToken)                      // compute the shared key with the server
+		Usr1Token_hash_srvSignedToken = HMAC(Usr1Token_key_verify_srvSignedToken, ~request)     // compute the HMAC for the server
 		
 		// unblind User1's second server token, compute the keys and HMACs for each unblinded token signed by the token issuer and by the server, and create a request
-		Usr1UnblindedSrvToken2=unblind(Usr1srvSignedToken2, r1)
-		key2=h2(t1, Usr1unblinded2)
+		Usr1UnblindedSrvToken2 = unblind(Usr1srvSignedToken2, r1)
+		key2 = h2(t1, Usr1unblinded2)
 		s2 = HMAC(key2, ~request1)
 		Usr1Token_key_verify_srvSignedToken2 = h2(t1, Usr1UnblindedSrvToken2)
 		Usr1Token2_hash_srvSignedToken = HMAC(Usr1Token_key_verify_srvSignedToken2, ~request1)
 		
 		// unblind the Junk token server token, compute the keys and HMACs for each unblinded token signed by the token issuer and by the server, and create a request
-        JunkUnblindedSrvToken=unblind(JunksrvSignedToken, r2)
-		key3=h2(t2, Junkunblinded)
+        JunkUnblindedSrvToken = unblind(JunksrvSignedToken, r2)
+		key3 = h2(t2, Junkunblinded)
 		s3 = HMAC(key3, ~request2)
 		JunkToken_key_verify_srvSignedToken = h2(t, JunkUnblindedSrvToken)
 		JunkToken_hash_srvSignedToken = HMAC(JunkToken_key_verify_srvSignedToken, ~request2)
     in
     [
         State_Usr_unblind($Usr, $Srv, $Ti, X, Y, t, t1, t2, r, r1, r2, Usr1unblinded, Usr1unblinded2, Junkunblinded, Usr1srvSignedToken, Usr1srvSignedToken2, JunksrvSignedToken),
-        Fr(~request),
+        Fr(~request),                                                                           // generate fresh requests
 		Fr(~request1),
 		Fr(~request2)
     ]
