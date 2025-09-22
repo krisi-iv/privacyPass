@@ -44,41 +44,6 @@ for line in lines:
 			l2.append(num)
 		elif 'In_S' in line:
 			l3.append(num)
-
-	elif "one_more_token_security" in lemma:
-		print ("applying oracle to "+lemma)
-		if '!State' in line:
-			l1.append(num)
-		if '!KU( sign(blind(h1(' in line:
-			l1.append(num)
-		if '!KU( blind(h1(' in line:
-			l1.append(num)
-		if 'SignedToken(sign(blind(h1(~t' in line:
-			l2.append(num)
-		if '!KU( ~n' in line or '!KU( ~t' in line or '!KU( ~r' in line or '!KU( ~url' in line or 'KU( ~request' in line:
-			l1.append(num)
-		if '!KU( sign(' in line:
-			l2.append(num)
-		if '!KU( h' in line:
-			l2.append(num)
-		if '!KU( SHMac(HMAC' in line:
-			l2.append(num)
-		if '!KU( CalcR' in line:
-			l5.append(num)
-		if ('In_S' in line and ("<'8'" in line or ("<'5'" in line) or ("<'4'" in line))):
-			l3.append(num)
-		if ('In_S' in line and ("<'3'" in line or ("<'6'" in line))):
-			l4.append(num)		
-		if '!KU( HMAC(h2(' in line:
-			l3.append(num)
-		if '!KU( CalcR' in line:
-			l2.append(num)
-		if  'In_S' in line:
-			l5.append(num)
-		if  'Token(t)' in line:
-			l5.append(num)
-		if  'KU( Chall' in line or 'KU( UserSol' in line or 'KU( URL(' in line:
-			l6.append(num)
 	else:
 		print ("applying standard heuristic to "+lemma)
 		exit(0)		
