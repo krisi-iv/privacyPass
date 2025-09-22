@@ -12,7 +12,7 @@
     - `privacy_pass.oracle`: The oracle used to speed up the verification of the correctness and single signing key property of Privacy Pass.
 
 3. **Manual Attack Trace**
-    - `Manual_Proof/ PP_model.spthy`: attack trace for the one-more-token security property for the Privacy Pass model (`privacyPass.spthy`).
+    - `Manual_Proof/ SP1_manual_proof_PP_model.spthy`: attack trace for the one-more-token security property for the Privacy Pass model (`privacyPass.spthy`).
 
 ## Flags 
 The flag "MANUAL" is set for the `one_more_token_security` lemma in the `privacyPass.spthy` model to indicate that it has to be proven manually and the attack trace found is availabe in the `PP_model.spthy` file.
@@ -26,3 +26,4 @@ The beginning of each `.spthy` file contains instructions on how the model can b
 
 
 The models dealing with observational equivalence and verifying (*SP2*) and (*SP3*) can be found in the folder `SP3_SP4_Observational_Equivalence`
+
