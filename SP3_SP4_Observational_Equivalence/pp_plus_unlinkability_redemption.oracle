@@ -1,0 +1,43 @@
+#!/usr/bin/python3
+
+import re
+import os
+import sys
+debug = True
+
+lines = sys.stdin.readlines()
+l1 = []
+l2 = []
+l3 = []
+l4 = []
+l5 = []
+l6 = []
+lemma = sys.argv[1]
+
+# INPUT:
+# - lines contain a list of "%i:goal" where "%i" is the index of the goal
+# - lemma contain the name of the lemma under scrutiny
+# OUTPUT:
+# - (on stdout) a list of ordered index separated by EOL
+
+
+for line in lines:
+	num = line.split(':')[0]
+	if "Observational" in lemma:
+		print ("applying oracle to "+lemma)
+		if 'In_S' in line or 'KU( ~r' in line or 'KU( ~n' in line or 'State_' in line:
+			l1.append(num)
+		elif "KU(" in line and "~n" in line:
+			l3.append(num)	
+		elif  "KU( $Srv" in line or "KD( $Srv" in line or "KU( $Ti" in line or "KD( $Ti" in line or "KU( $Usr" in line or "KD( $Usr" in line:
+			l4.append(num)      
+		elif '~~>' in line:
+			l6.append(num)
+	else:
+		print ("applying standard heuristic to "+lemma)
+		exit(0)		
+
+# Ordering all goals by ranking (higher first)
+ranked=l1+l2+l3+l4+l5+l6
+for goal in ranked:
+	print (goal)
