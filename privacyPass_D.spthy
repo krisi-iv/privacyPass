@@ -1,5 +1,5 @@
 /*
-* Protocol: PP
+* Protocol: PP verified under the default attack model D
 * 
 * Actors:
 * Usr - User/ Client

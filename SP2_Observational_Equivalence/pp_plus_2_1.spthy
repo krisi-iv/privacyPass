@@ -1,5 +1,5 @@
 /* 
-Protocol: PP+_2
+Protocol: PP+_2.1
 
 Instructions to run: 
 automatic: tamarin-prover pp_plus_2_1.spthy --prove --derivcheck-timeout=500
