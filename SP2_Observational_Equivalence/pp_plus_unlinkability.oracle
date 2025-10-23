@@ -25,30 +25,24 @@ for line in lines:
 	num = line.split(':')[0]
 	if "Observational" in lemma:
 		print ("applying oracle to "+lemma)
-		if 'In_S' in line:
+		if 'KU( ~' in line:
 			l1.append(num)
-		if 'KU( ~r' in line:
-			l1.append(num)
-		if 'LeakKeys' in line:
-			l2.append(num)      
-		if "KU( '1'" in line or "KD( '1'" in line:
+		elif '~~>' in line:
+			l2.append(num) 
+		elif 'In' in line or 'State_' in line:
 			l3.append(num)
-		if "KU( '2'" in line or "KD( '2'" in line:
-			l3.append(num)
-		if "KU( $A" in line or "KD( $A" in line:
-			l3.append(num)            
-		if "KU( $Usr" in line or "KD( $Usr" in line:
-			l3.append(num)  
-		if "KU( $B" in line or "KD( $B" in line:
-			l3.append(num)
-		if "KU( $Srv" in line or "KD( $Srv" in line:
-			l3.append(num)
-		if "KU( $Ti" in line or "KD( $Ti" in line:
-			l3.append(num)
-		if 'State_' in line:
-			l4.append(num)        
-		if "KU(" in line and "~n" in line:
+		elif 'h1(~' in line or 'h2(~' in line or 'h3(~' in line:
+			l4.append(num)
+		elif 'KU( $Usr' in line or 'KU( $Srv' in line or 'KU( $Ti' in line:
 			l5.append(num)
+		elif '~t' in line or '~n' in line or '~r' in line:
+			l6.append(num)
+	elif "correctness" in lemma or 'adversary' in lemma:
+		print ("applying oracle to "+lemma)
+		if 'State' in line or 'KU( ~n' in line:
+			l1.append(num)
+		elif 'h1(~' in line or 'h2(~' in line or 'h3(~' in line:
+			l2.append(num)
 	else:
 		print ("applying standard heuristic to "+lemma)
 		exit(0)		

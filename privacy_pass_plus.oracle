@@ -36,24 +36,15 @@ for line in lines:
 			l4.append(num)
 		elif 'SignedToken(sign(blind(h1(~t' in line or 'KU( sign(blind(h1(~t' in line or 'KU( blind(h1(~t' in line:
 			l5.append(num)
-		elif 'KU( HMAC(h2(' in line or 'KU( h2(t' in line or 'KU( sign(signedToken' in line or 'KU( ~n.' in line:
+		elif 'KU( MAC(h2(' in line or 'KU( h2(t' in line or 'KU( sign(signedToken' in line or 'KU( ~n.' in line:
 			l6.append(num)
 
-	elif "prove_correctness" in lemma:
+	elif "correctness" in lemma:
 		print ("applying oracle to "+lemma)
 		if 'In_S' in line:
 			l1.append(num)
 
-	elif "single_signing_key_original" in lemma:
-		print ("applying oracle to "+lemma)
-		if 'KU( pow(~n' in line or 'KU( ~n' in line:
-			l1.append(num)
-		elif 'In_S' in line:
-			l3.append(num)
-		elif 'State_' in line:
-			l3.append(num)
-
-	elif "single_signing_key_new" in lemma:
+	elif "single_signing_key" in lemma:
 		print ("applying oracle to "+lemma)
 		if '!KU( ~r' in line or '!KU( ~t' in line:
 			l1.append(num)

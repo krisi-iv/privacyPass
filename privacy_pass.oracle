@@ -23,7 +23,7 @@ lemma = sys.argv[1]
 
 for line in lines:
 	num = line.split(':')[0]
-	if "single_signing_key_new" in lemma:
+	if "single_signing_key" in lemma:
 		print ("applying oracle to "+lemma)
 		if '!KU( ~r' in line or '!KU( ~t' in line:
 			l1.append(num)
@@ -33,17 +33,6 @@ for line in lines:
 			l3.append(num)
 		elif 'In_S' in line or 'State' in line or 'UsrCreateToken(' in line or  'UsrVerifyAndStoreToken(' in line:
 			l4.append(num)
-
-	elif "single_signing_key_original" in lemma:
-		print ("applying oracle to "+lemma)
-		if 'State' in line:
-			l1.append(num)
-		elif '!KU( ~n )' in line:
-			l1.append(num)
-		elif '!KU( pow(~n, x' in line:
-			l2.append(num)
-		elif 'In_S' in line:
-			l3.append(num)
 	else:
 		print ("applying standard heuristic to "+lemma)
 		exit(0)		
