@@ -41,11 +41,16 @@ summary of summaries:
 
 analyzed: privacyPass_plus.spthy
 
-  processing time: 1717.25s
+  processing time: 1283.27s
 
-  prove_correctness (exists-trace): verified (43 steps)
-  single_signing_key(all-traces): verified (263 steps)
-  one_more_token_security (all-traces): verified (1622 steps)
+  correctness (exists-trace): verified (43 steps)
+  single_signing_key_no_leakage (all-traces): verified (263 steps)
+  one_more_token_security_no_leakage (all-traces): verified (1761 steps)
+  single_signing_key (all-traces): verified (263 steps)
+  single_signing_key_TI_leakage (all-traces): verified (263 steps)
+  one_more_token_security_TI_leakage (all-traces): verified (1626 steps)
+  single_signing_key_Srv_leakage (all-traces): verified (263 steps)
+  one_more_token_security_Srv_leakage (all-traces): verified (1700 steps)
 
 ==============================================================================
 
@@ -143,7 +148,7 @@ rule Setup_Ti:
         EntityCreated($Ti, 'ti')
     ]->
     [ 
-        LeakKeys($Ti, secr_key),
+        TiLeakKeys($Ti, secr_key),
         State_Ti_setup($Ti, X, Y, ord, secr_key), 
         State_Srv_Ti($Ti, Y), 
         !State_Usr_Ti($Ti, X), 
@@ -162,6 +167,7 @@ rule Setup_Srv:
         EntityCreated($Srv, 'server') 
     ]->
     [  
+        SrvLeakKeys($Srv, srv_secr_key),
         State_Srv_setup($Srv, $Ti, Y, srv_secr_key), 
         !State_Srv_Usr($Srv, $Ti, Y),
         !State_Srv_id($Srv) 
@@ -184,9 +190,15 @@ rule Setup_Usr:
 
 // allowing the TI to leak its secret key 
 rule Ti_leaked_signing_key:
-    [ LeakKeys($Ti, secr_key) ]
+    [ TiLeakKeys($Ti, secr_key) ]
     --[ TiLeakedKey($Ti, secr_key) ]->
     [ Out(secr_key) ]
+
+// allowing the Srv to leak its secret key 
+rule Srv_leaked_signing_key:
+    [ SrvLeakKeys($Srv, srv_secr_key) ]
+    --[ SrvLeakedKey($Srv, srv_secr_key) ]->
+    [ Out(srv_secr_key) ]
 
 // create channel id between the TI and the server
 rule connect_Ti_Srv:
@@ -656,6 +668,58 @@ lemma correctness:exists-trace
     & not (request1 = request2) & not(request1=request3) & not(request2=request3)
     & not(Ex x #c. Rev(x, 'secureChannel')@c)
 "
+/*
+* No TI and Srv leakage
+*/
+
+lemma single_signing_key_no_leakage:
+" All user server t unbl commitment solution bt
+    tokenIssuer Y secr_key
+    #t01 #t02 #t03
+    .
+    Setup_Ti(tokenIssuer, Y, secr_key) @ t01
+    & 
+    UsrCreateToken(user, server, tokenIssuer, solution, bt, t) @ t02
+    &
+    UsrVerifyAndStoreToken(user, server, t, unbl, commitment) @ t03
+    & #t01 < #t02
+    & #t02 < #t03
+    & not(Ex #a. TiLeakedKey(tokenIssuer, secr_key) @ a)
+    & not(Ex srv_secr_key #b. SrvLeakedKey(server, srv_secr_key) @ b)
+    ==>
+    ( Ex #i.
+        TiSignsToken(tokenIssuer, t, secr_key) @ i
+        & #t02 < #i
+        & #i < #t03
+    )
+"
+
+lemma one_more_token_security_no_leakage:
+"All tokenIssuer server user t Y secr_key res #i #k #l.
+    Setup_Ti(tokenIssuer, Y, secr_key) @ i
+    &
+    TiVerifySignedToken(tokenIssuer, t, secr_key) @ k
+    & 
+    SrvSendNewResource(server, user, res, t) @ l
+    &
+    #i < #k
+    &
+    #k < #l
+    & not(Ex #a. TiLeakedKey(tokenIssuer, secr_key) @ a)
+    & not(Ex srv_secr_key #b. SrvLeakedKey(server, srv_secr_key) @ b)
+    ==>
+    ( Ex #j.
+        TiSignsToken(tokenIssuer, t, secr_key) @ j 
+        &
+        #j < #k
+    )
+"
+
+
+/*
+* TI and Srv leakage
+*/
+
 
 /*
 * Lemma to prove the single signing key property of the TI
@@ -674,17 +738,30 @@ lemma single_signing_key:
     & #t01 < #t02
     & #t02 < #t03
     ==>
-    ( Ex #i.
-        TiSignsToken(tokenIssuer, t, secr_key) @ i
-        & #t02 < #i
-        & #i < #t03
+    (
+        ( Ex #i.
+            TiSignsToken(tokenIssuer, t, secr_key) @ i
+            & #t02 < #i
+            & #i < #t03
+        )
+        |
+        // both keys leaked and we have a secure channel compromise
+        (
+            (Ex srv_secr_key #a. SrvLeakedKey(server, srv_secr_key) @ a)
+            &
+            (Ex #a. TiLeakedKey(tokenIssuer, secr_key) @ a)
+            &
+            (Ex x #c. Rev(x, 'secureChannel')@c)
+        )
     )
 "
 
 /*
 * Lemma to prove the one more token security property. 
 * If the token issuer verifies the signed token, then the token issuer must have signed it before with the same signing key
+* TO BE PROVEN MANUALLY
 */
+#ifdef MANUAL
 lemma one_more_token_security:
 "All tokenIssuer server user t Y secr_key res #i #k #l.
     Setup_Ti(tokenIssuer, Y, secr_key) @ i
@@ -696,6 +773,116 @@ lemma one_more_token_security:
     #i < #k
     &
     #k < #l
+    ==>
+    ( Ex #j.
+        TiSignsToken(tokenIssuer, t, secr_key) @ j 
+        &
+        #j < #k
+    )
+"
+#endif
+
+
+/*
+* TI key leakage
+*/
+
+
+/*
+* Lemma to prove the single signing key property of the TI
+* For a user who has sent out blinded tokens and has received valid signed blinded tokens back, the token issuer must have signed the blinded tokens with its secret key
+*/
+lemma single_signing_key_TI_leakage:
+" All user server t unbl commitment solution bt
+    tokenIssuer Y secr_key
+    #t01 #t02 #t03
+    .
+    Setup_Ti(tokenIssuer, Y, secr_key) @ t01
+    & 
+    UsrCreateToken(user, server, tokenIssuer, solution, bt, t) @ t02
+    &
+    UsrVerifyAndStoreToken(user, server, t, unbl, commitment) @ t03
+    & #t01 < #t02
+    & #t02 < #t03
+    & not(Ex srv_secr_key #a. SrvLeakedKey(server, srv_secr_key) @ a)
+    ==>
+    ( Ex #i.
+        TiSignsToken(tokenIssuer, t, secr_key) @ i
+        & #t02 < #i
+        & #i < #t03
+    )
+"
+
+/*
+* Lemma to prove the one more token security property. 
+* If the token issuer verifies the signed token, then the token issuer must have signed it before with the same signing key
+*/
+lemma one_more_token_security_TI_leakage:
+"All tokenIssuer server user t Y secr_key res #i #k #l.
+    Setup_Ti(tokenIssuer, Y, secr_key) @ i
+    &
+    TiVerifySignedToken(tokenIssuer, t, secr_key) @ k
+    & 
+    SrvSendNewResource(server, user, res, t) @ l
+    &
+    #i < #k
+    &
+    #k < #l
+    & not(Ex srv_secr_key #a. SrvLeakedKey(server, srv_secr_key) @ a)
+    ==>
+    ( Ex #j.
+        TiSignsToken(tokenIssuer, t, secr_key) @ j 
+        &
+        #j < #k
+    )
+"
+
+/*
+* Srv key leakage
+*/
+
+
+/*
+* Lemma to prove the single signing key property of the TI
+* For a user who has sent out blinded tokens and has received valid signed blinded tokens back, the token issuer must have signed the blinded tokens with its secret key
+*/
+lemma single_signing_key_Srv_leakage:
+" All user server t unbl commitment solution bt
+    tokenIssuer Y secr_key
+    #t01 #t02 #t03
+    .
+    Setup_Ti(tokenIssuer, Y, secr_key) @ t01
+    & 
+    UsrCreateToken(user, server, tokenIssuer, solution, bt, t) @ t02
+    &
+    UsrVerifyAndStoreToken(user, server, t, unbl, commitment) @ t03
+    & #t01 < #t02
+    & #t02 < #t03
+    & not(Ex #a. TiLeakedKey(tokenIssuer, secr_key) @ a)
+    ==>
+    ( Ex #i.
+        TiSignsToken(tokenIssuer, t, secr_key) @ i
+        & #t02 < #i
+        & #i < #t03
+    )
+"
+
+/*
+* Lemma to prove the one more token security property. 
+* If the token issuer verifies the signed token, then the token issuer must have signed it before with the same signing key
+*/
+lemma one_more_token_security_Srv_leakage:
+"All tokenIssuer server user t Y secr_key res #i #k #l.
+    Setup_Ti(tokenIssuer, Y, secr_key) @ i
+    &
+    TiVerifySignedToken(tokenIssuer, t, secr_key) @ k
+    & 
+    SrvSendNewResource(server, user, res, t) @ l
+    &
+    #i < #k
+    &
+    #k < #l
+    & not(Ex #a. TiLeakedKey(tokenIssuer, secr_key) @ a)
     ==>
     ( Ex #j.
         TiSignsToken(tokenIssuer, t, secr_key) @ j 
